@@ -1,19 +1,22 @@
 language: java
 sudo: false # faster builds
+cache:
+  directories:
+    - $HOME/.m2
 
 jobs:
   include:
     - stage: prepare
       script:
         - cd ddm-lmp
-        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true -B -V
+        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true --batch-mode --show-version --errors
     - script:
         - cd ddm-pc
-        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true -B -V
+        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true --batch-mode --show-version --errors
     - stage: test
       script:
         - cd ddm-lmp
-        - mvn test -B
+        - mvn test --batch-mode --errors
     - script:
         - cd ddm-pc
-        - mvn test -B
+        - mvn test --batch-mode --errors

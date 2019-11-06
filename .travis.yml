@@ -1,0 +1,19 @@
+language: java
+sudo: false # faster builds
+
+jobs:
+  include:
+    - stage: prepare
+      script:
+        - cd ddm-lmp
+        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true -B -V
+    - script:
+        - cd ddm-pc
+        - mvn install -DskipTests=true -Dmaven.javadoc.skip=true -B -V
+    - stage: test
+      script:
+        - cd ddm-lmp
+        - mvn test -B
+    - script:
+        - cd ddm-pc
+        - mvn test -B

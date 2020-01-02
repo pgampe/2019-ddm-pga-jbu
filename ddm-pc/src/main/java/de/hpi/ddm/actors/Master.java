@@ -53,12 +53,19 @@ public class Master extends AbstractLoggingActor {
     }
 
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class RequestLineMessage implements Serializable {
         private static final long serialVersionUID = 4791804711649009868L;
-        private ActorRef sender;
     }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FoundPassword implements Serializable {
+        private static final long serialVersionUID = 4791804711649009868L;
+        private String line_number;
+        private String password;
+    }
+
 
     /////////////////
     // Actor State //
@@ -71,6 +78,8 @@ public class Master extends AbstractLoggingActor {
     private long startTime;
 
     private Stack<String[]> lines = new Stack<>();
+    private boolean ready_for_termination = false;
+    private List<String> lines_in_flight = new LinkedList<>();
 
     /////////////////////
     // Actor Lifecycle //
@@ -93,6 +102,7 @@ public class Master extends AbstractLoggingActor {
                 .match(Terminated.class, this::handle)
                 .match(RegistrationMessage.class, this::handle)
                 .match(RequestLineMessage.class, this::handle)
+                .match(FoundPassword.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
@@ -111,22 +121,26 @@ public class Master extends AbstractLoggingActor {
         ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (message.getLines().isEmpty()) {
-            this.collector.tell(new Collector.PrintMessage(), this.self());
-            this.terminate();
+            this.ready_for_termination = true;
             return;
         }
 
         this.lines.addAll(message.getLines());
+        for (String[] line : message.getLines()) {
+            this.lines_in_flight.add(line[0]);
+        }
         System.out.println("Processed batch of size " + message.getLines().size());
-        //this.collector.tell(new Collector.CollectMessage("Processed batch of size " + message.getLines().size()), this.self());
-        /*for (String[] line : message.getLines()) {
-            System.out.println(Arrays.toString(line));
-        }*/
-
-        //this.reader.tell(new Reader.ReadMessage(), this.self());
     }
 
     protected void handle(RequestLineMessage requestLineMessage) {
+        if (this.ready_for_termination) {
+            if (lines_in_flight.size() == 0) {
+                this.collector.tell(new Collector.PrintMessage(), this.self());
+                this.terminate();
+            }
+            // Do not send another idle message
+            return;
+        }
         System.out.println("new line request, sending now with lines in buffer " + this.lines.size());
         // TODO idle
         if (this.lines.size() > 0) {
@@ -135,6 +149,13 @@ public class Master extends AbstractLoggingActor {
             this.reader.tell(new Reader.ReadMessage(), this.self());
             this.sender().tell(new Worker.IdleMessage(), this.self());
         }
+    }
+
+    public void handle(FoundPassword foundPassword) {
+        this.lines_in_flight.remove(foundPassword.line_number);
+        this.collector.tell(new Collector.CollectMessage(
+                "Found password: " + foundPassword.password + " for line " + foundPassword.line_number
+        ), this.self());
     }
 
 
@@ -156,14 +177,14 @@ public class Master extends AbstractLoggingActor {
     protected void handle(RegistrationMessage message) {
         this.context().watch(this.sender());
         this.workers.add(this.sender());
-		this.log().info("Registered {}", this.sender());
-		// Make sure the workers actually do something
-		this.sender().tell(new Worker.StartMessage(), this.self());
+        this.log().info("Registered {}", this.sender());
+        // Make sure the workers actually do something
+        this.sender().tell(new Worker.StartMessage(), this.self());
     }
 
     protected void handle(Terminated message) {
         this.context().unwatch(message.getActor());
         this.workers.remove(message.getActor());
-		this.log().info("Unregistered {}", message.getActor());
+        this.log().info("Unregistered {}", message.getActor());
     }
 }

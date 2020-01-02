@@ -1,8 +1,10 @@
 package de.hpi.ddm.actors;
 
+import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.List;
 
 import akka.actor.AbstractLoggingActor;
@@ -16,6 +18,9 @@ import akka.cluster.ClusterEvent.MemberUp;
 import akka.cluster.Member;
 import akka.cluster.MemberStatus;
 import de.hpi.ddm.MasterSystem;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 public class Worker extends AbstractLoggingActor {
 
@@ -36,6 +41,24 @@ public class Worker extends AbstractLoggingActor {
 	////////////////////
 	// Actor Messages //
 	////////////////////
+
+	@Data
+	public static class StartMessage implements Serializable {
+		private static final long serialVersionUID = 3658961703483581871L;
+	}
+
+	@Data
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class ProcessLineMessage implements Serializable {
+		private static final long serialVersionUID = -5552548416077950569L;
+		private String[] line;
+	}
+
+	@Data
+	public static class IdleMessage implements Serializable {
+		private static final long serialVersionUID = 3658961703483581871L;
+	}
 
 	/////////////////
 	// Actor State //
@@ -70,9 +93,40 @@ public class Worker extends AbstractLoggingActor {
 				.match(CurrentClusterState.class, this::handle)
 				.match(MemberUp.class, this::handle)
 				.match(MemberRemoved.class, this::handle)
+				.match(StartMessage.class, this::handle)
+				.match(ProcessLineMessage.class, this::handle)
+				.match(IdleMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
+
+	private void handle(StartMessage startMessage) {
+		System.out.println("worker startmessage");
+		this.sender().tell(new Master.RequestLineMessage(), this.self());
+	}
+
+	private void handle(ProcessLineMessage processLineMessage) {
+		System.out.println("Processing line");
+		System.out.println(Arrays.toString(processLineMessage.line));
+		this.sender().tell(new Master.RequestLineMessage(this.sender()), this.self());
+	}
+	private void handle(IdleMessage idleMessage) {
+		System.out.println("worker idlemessage");
+		this.sender().tell(new Master.RequestLineMessage(), this.self());
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	private void handle(CurrentClusterState message) {
 		message.getMembers().forEach(member -> {

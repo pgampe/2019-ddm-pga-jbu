@@ -96,7 +96,7 @@ public class Worker extends AbstractLoggingActor {
     }
 
     private void handle(StartMessage startMessage) {
-        System.out.println("worker startmessage");
+        //System.out.println("worker startmessage");
         this.sender().tell(new Master.RequestLineMessage(), this.self());
     }
 
@@ -111,21 +111,21 @@ public class Worker extends AbstractLoggingActor {
         int password_length = Integer.parseInt(line[3]);
         String password_hash = line[4];
 
-        System.out.println("Processing line " + line[0]);
-        System.out.println("Password: " + password_hash);
+        //System.out.println("Processing line " + line[0]);
+        //System.out.println("Password: " + password_hash);
 
         Set<String> hints = new HashSet<>(Arrays.asList(line).subList(5, line.length));
 
         // Lets crack the hints
         for (int i = 0; i < chars_array.length; i++) {
-            System.out.println("Trying permutations without char " + chars_array[i]);
+            //System.out.println("Trying permutations without char " + chars_array[i]);
             char[] current_chars = ArrayUtils.remove(chars_array, i);
             if (this.heapPermutation(current_chars, current_chars.length, hints)) {
-                System.out.println("Char " + chars_array[i] + " is not in password");
+                //System.out.println("Char " + chars_array[i] + " is not in password");
                 chars_in_password.remove((Character) chars_array[i]);
             }
         }
-        System.out.println("Chars in password: " + chars_in_password);
+        //System.out.println("Chars in password: " + chars_in_password);
 
         String password = crackPassword(
                 chars_in_password,
@@ -134,7 +134,7 @@ public class Worker extends AbstractLoggingActor {
                 password_length,
                 password_hash
         );
-        System.out.println("The password is " + password);
+        //System.out.println("The password is " + password);
 
         // Send out the found password
         this.sender().tell(new Master.FoundPassword(line[0], password), this.self());
@@ -198,7 +198,7 @@ public class Worker extends AbstractLoggingActor {
             if (hints.contains(hash)) {
                 // No need to check the same has again
                 hints.remove(hash);
-                System.out.println("Found hint " + hint);
+                //System.out.println("Found hint " + hint);
                 return true;
             }
             return false;

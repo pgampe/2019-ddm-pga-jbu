@@ -4,8 +4,7 @@ import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
@@ -55,11 +54,6 @@ public class Worker extends AbstractLoggingActor {
         private String[] line;
     }
 
-    @Data
-    public static class IdleMessage implements Serializable {
-        private static final long serialVersionUID = 3658961703483581871L;
-    }
-
     /////////////////
     // Actor State //
     /////////////////
@@ -95,7 +89,6 @@ public class Worker extends AbstractLoggingActor {
                 .match(MemberRemoved.class, this::handle)
                 .match(StartMessage.class, this::handle)
                 .match(ProcessLineMessage.class, this::handle)
-                .match(IdleMessage.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
@@ -107,22 +100,22 @@ public class Worker extends AbstractLoggingActor {
 
     private void handle(ProcessLineMessage processLineMessage) {
     	String[] line = processLineMessage.line;
-		char[] chars = line[2].toCharArray();
+		String chars = line[2];
 		int password_length = Integer.parseInt(line[3]);
 		String password_hash = line[4];
-        System.out.println("Processing line");
-		System.out.println("Password chars: " + Arrays.toString(chars));
+        System.out.println("Processing line " + line[0]);
+		System.out.println("Password chars: " + chars);
 		System.out.println("Password length: " + password_length);
 		System.out.println("Password: " + password_hash);
+
+        //Set<String> hints = new HashSet<>(Arrays.asList(line).subList(5, line.length));
+
+        List<String> permutations = new LinkedList<>();
+        //this.heapPermutation(new char[]{'a', 'b', 'c',}, 3, 3, permutations);
 
 		// Send out the found password
 		this.sender().tell(new Master.FoundPassword(line[0], "aaa"), this.self());
 		// Since we are done, request more work
-        this.sender().tell(new Master.RequestLineMessage(), this.self());
-    }
-
-    private void handle(IdleMessage idleMessage) {
-        System.out.println("worker idlemessage");
         this.sender().tell(new Master.RequestLineMessage(), this.self());
     }
 

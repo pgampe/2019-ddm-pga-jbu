@@ -3,11 +3,7 @@ package de.hpi.ddm.actors;
 import java.io.Serializable;
 import java.util.*;
 
-import akka.actor.AbstractLoggingActor;
-import akka.actor.ActorRef;
-import akka.actor.PoisonPill;
-import akka.actor.Props;
-import akka.actor.Terminated;
+import akka.actor.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -129,25 +125,30 @@ public class Master extends AbstractLoggingActor {
         for (String[] line : message.getLines()) {
             this.lines_in_flight.add(line[0]);
         }
+        // Give workers a hint, this new items are ready
+        for (ActorRef worker : this.workers) {
+            worker.tell(new Worker.StartMessage(), this.self());
+        }
         System.out.println("Processed batch of size " + message.getLines().size());
     }
 
     protected void handle(RequestLineMessage requestLineMessage) {
+        System.out.println("RequestLine message");
         if (this.ready_for_termination) {
+            System.out.println("Ready for termination with lines open " + this.lines_in_flight.size());
             if (lines_in_flight.size() == 0) {
                 this.collector.tell(new Collector.PrintMessage(), this.self());
                 this.terminate();
             }
-            // Do not send another idle message
-            return;
         }
-        System.out.println("new line request, sending now with lines in buffer " + this.lines.size());
-        // TODO idle
         if (this.lines.size() > 0) {
+            System.out.println("new line request, sending now with lines in buffer " + this.lines.size());
             this.sender().tell(new Worker.ProcessLineMessage(this.lines.pop()), this.self());
         } else {
-            this.reader.tell(new Reader.ReadMessage(), this.self());
-            this.sender().tell(new Worker.IdleMessage(), this.self());
+            if (!this.ready_for_termination) {
+                System.out.println("Requesting new data");
+                this.reader.tell(new Reader.ReadMessage(), this.self());
+            }
         }
     }
 

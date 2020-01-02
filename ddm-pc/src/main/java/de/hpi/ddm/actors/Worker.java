@@ -2,6 +2,7 @@ package de.hpi.ddm.actors;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -20,6 +21,7 @@ import de.hpi.ddm.MasterSystem;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.ArrayUtils;
 
 public class Worker extends AbstractLoggingActor {
 
@@ -99,23 +101,44 @@ public class Worker extends AbstractLoggingActor {
     }
 
     private void handle(ProcessLineMessage processLineMessage) {
-    	String[] line = processLineMessage.line;
-		String chars = line[2];
-		int password_length = Integer.parseInt(line[3]);
-		String password_hash = line[4];
+        String[] line = processLineMessage.line;
+        String chars = line[2];
+        char[] chars_array = chars.toCharArray();
+        List<Character> chars_in_password = new ArrayList<>();
+        for (char c : chars_array) {
+            chars_in_password.add(c);
+        }
+        int password_length = Integer.parseInt(line[3]);
+        String password_hash = line[4];
+
         System.out.println("Processing line " + line[0]);
-		System.out.println("Password chars: " + chars);
-		System.out.println("Password length: " + password_length);
-		System.out.println("Password: " + password_hash);
+        System.out.println("Password: " + password_hash);
 
-        //Set<String> hints = new HashSet<>(Arrays.asList(line).subList(5, line.length));
+        Set<String> hints = new HashSet<>(Arrays.asList(line).subList(5, line.length));
 
-        List<String> permutations = new LinkedList<>();
-        //this.heapPermutation(new char[]{'a', 'b', 'c',}, 3, 3, permutations);
+        // Lets crack the hints
+        for (int i = 0; i < chars_array.length; i++) {
+            System.out.println("Trying permutations without char " + chars_array[i]);
+            char[] current_chars = ArrayUtils.remove(chars_array, i);
+            if (this.heapPermutation(current_chars, current_chars.length, hints)) {
+                System.out.println("Char " + chars_array[i] + " is not in password");
+                chars_in_password.remove((Character) chars_array[i]);
+            }
+        }
+        System.out.println("Chars in password: " + chars_in_password);
 
-		// Send out the found password
-		this.sender().tell(new Master.FoundPassword(line[0], "aaa"), this.self());
-		// Since we are done, request more work
+        String password = crackPassword(
+                chars_in_password,
+                "",
+                chars_in_password.size(),
+                password_length,
+                password_hash
+        );
+        System.out.println("The password is " + password);
+
+        // Send out the found password
+        this.sender().tell(new Master.FoundPassword(line[0], password), this.self());
+        // Since we are done, request more work
         this.sender().tell(new Master.RequestLineMessage(), this.self());
     }
 
@@ -146,17 +169,18 @@ public class Worker extends AbstractLoggingActor {
             this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
     }
 
+    // Slightly optimized by IDEA hints
     private String hash(String line) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashedBytes = digest.digest(String.valueOf(line).getBytes("UTF-8"));
+            byte[] hashedBytes = digest.digest(String.valueOf(line).getBytes(StandardCharsets.UTF_8));
 
-            StringBuffer stringBuffer = new StringBuffer();
-            for (int i = 0; i < hashedBytes.length; i++) {
-                stringBuffer.append(Integer.toString((hashedBytes[i] & 0xff) + 0x100, 16).substring(1));
+            StringBuilder stringBuffer = new StringBuilder();
+            for (byte hashedByte : hashedBytes) {
+                stringBuffer.append(Integer.toString((hashedByte & 0xff) + 0x100, 16).substring(1));
             }
             return stringBuffer.toString();
-        } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e.getMessage());
         }
     }
@@ -164,13 +188,27 @@ public class Worker extends AbstractLoggingActor {
     // Generating all permutations of an array using Heap's Algorithm
     // https://en.wikipedia.org/wiki/Heap's_algorithm
     // https://www.geeksforgeeks.org/heaps-algorithm-for-generating-permutations/
-    private void heapPermutation(char[] a, int size, int n, List<String> l) {
+    // Adopted for current use case
+    private boolean heapPermutation(char[] a, int size, Set<String> hints) {
         // If size is 1, store the obtained permutation
-        if (size == 1)
-            l.add(new String(a));
+        if (size == 1) {
+            //l.add(new String(a));
+            String hint = new String(a);
+            String hash = hash(hint);
+            if (hints.contains(hash)) {
+                // No need to check the same has again
+                hints.remove(hash);
+                System.out.println("Found hint " + hint);
+                return true;
+            }
+            return false;
+        }
 
         for (int i = 0; i < size; i++) {
-            heapPermutation(a, size - 1, n, l);
+            if (heapPermutation(a, size - 1, hints)) {
+                // Found a hint already, abort early to save CPU time
+                return true;
+            }
 
             // If size is odd, swap first and last element
             if (size % 2 == 1) {
@@ -186,5 +224,41 @@ public class Worker extends AbstractLoggingActor {
                 a[size - 1] = temp;
             }
         }
+        return false;
+    }
+
+    // The main recursive method
+    // to print all possible
+    // strings of length k
+    // https://www.geeksforgeeks.org/print-all-combinations-of-given-length/
+    // Adopted for current use case
+    private String crackPassword(List<Character> set, String prefix, int n, int k, String hash) {
+
+        // Base case: k is 0,
+        // print prefix
+        if (k == 0) {
+            if (hash(prefix).equals(hash)) {
+                return prefix;
+            }
+            return "";
+        }
+
+        // One by one add all characters
+        // from set and recursively
+        // call for k equals to k-1
+        for (int i = 0; i < n; ++i) {
+
+            // Next character of input added
+            String newPrefix = prefix + set.get(i);
+
+            // k is decreased, because
+            // we have added a new character
+            String result = crackPassword(set, newPrefix, n, k - 1, hash);
+            if (!result.equals("")) {
+                // abort because we already found the password
+                return result;
+            }
+        }
+        return "";
     }
 }

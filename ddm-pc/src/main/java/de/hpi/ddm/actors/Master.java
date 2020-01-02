@@ -58,7 +58,7 @@ public class Master extends AbstractLoggingActor {
     @AllArgsConstructor
     public static class FoundPassword implements Serializable {
         private static final long serialVersionUID = 4791804711649009868L;
-        private String line_number;
+        private String entry_number;
         private String password;
     }
 
@@ -153,9 +153,9 @@ public class Master extends AbstractLoggingActor {
     }
 
     public void handle(FoundPassword foundPassword) {
-        this.lines_in_flight.remove(foundPassword.line_number);
+        this.lines_in_flight.remove(foundPassword.entry_number);
         this.collector.tell(new Collector.CollectMessage(
-                "Found password: " + foundPassword.password + " for line " + foundPassword.line_number
+                "Found password: " + foundPassword.password + " for entry " + foundPassword.entry_number
         ), this.self());
     }
 
